@@ -1,50 +1,52 @@
-// src/ags_sensor.cpp
 #include "ags_sensor.h"
 
-Adafruit_AGS02MA ags;
-unsigned long lastAGSReadTime = 0;
+AGSSensor::AGSSensor() : wire2(), lastReadTime(0) {
+}
 
-void setupAGS() {
-    // Set I2C clock to 20KHz (20000)
-    Wire.setClock(20000);
+bool AGSSensor::setup() {
+    wire2.begin(AGS_SDA_PIN, AGS_SCL_PIN);
+    wire2.setClock(20000);
     
-    if (!ags.begin(&Wire, 0x1A)) {
+    if (!ags.begin(&wire2, 0x1A)) {
         Serial.println("Couldn't find AGS02MA sensor!");
-        return;
+        return false;
     }
 
     if (ags.getFirmwareVersion() == 0) {
         Serial.println("Could not read AGS02MA firmware!");
-        return;
+        return false;
     }
 
     Serial.println("AGS02MA sensor initialized!");
+    return true;
 }
 
-void readAGS() {
-    if (millis() - lastAGSReadTime < AGS_READ_INTERVAL) {
+bool AGSSensor::shouldRead() {
+    return (millis() - lastReadTime >= AGS_READ_INTERVAL);
+}
+
+void AGSSensor::read() {
+    if (!shouldRead()) {
         return;
     }
     
-    lastAGSReadTime = millis();
-
+    lastReadTime = millis();
+    
+    wire2.begin(AGS_SDA_PIN, AGS_SCL_PIN);
+    wire2.setClock(20000);
+    
     uint32_t resistance = ags.getGasResistance();
+    delay(50);
     uint32_t tvoc = ags.getTVOC();
     
+    if (resistance == 0 || tvoc == 0) {
+        Serial.println("\nFailed to read AGS sensor - reinitializing...");
+        setup();
+        return;
+    }
+    
     Serial.println("\n=== AGS02MA Readings ===");
-    
-    if (resistance == 0) {
-        Serial.println("Failed to read gas resistance!");
-    } else {
-        float kohm = resistance / 1000.0;
-        Serial.printf("Gas resistance: %.2f Kohms\n", kohm);
-    }
-
-    if (tvoc == 0) {
-        Serial.println("Failed to read TVOC!");
-    } else {
-        Serial.printf("TVOC: %d ppb\n", tvoc);
-    }
-    
-    Serial.println("=====================\n");
+    Serial.printf("Gas resistance: %.2f Kohms\n", resistance / 1000.0);
+    Serial.printf("TVOC: %d ppb\n", tvoc);
+    Serial.println("=====================");
 }
